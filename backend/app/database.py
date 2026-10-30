@@ -1,7 +1,7 @@
 import logging
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
-from backend.app.config import settings
+from app.config import settings
 
 logger = logging.getLogger("aicte_fdr.database")
 
