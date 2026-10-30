@@ -2,10 +2,10 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from backend.app.config import settings
-from backend.app.database import engine, Base, db_backend_type
-from backend.app.routers import auth, institutions, deposits, stats, tests_runner
-from backend.app.seed import seed_database
+from app.config import settings
+from app.database import engine, Base, db_backend_type
+from app.routers import auth, institutions, deposits, stats, tests_runner
+from app.seed import seed_database
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("aicte_fdr.main")
@@ -63,4 +63,4 @@ def health_check():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("backend.app.main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run("app.main:app", host="0.0.0.0", port=8000, reload=True)
