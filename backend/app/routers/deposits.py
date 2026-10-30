@@ -2,12 +2,12 @@ from datetime import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session, joinedload
-from backend.app.database import get_db
-from backend.app.models.deposit import Deposit, DepositStatus
-from backend.app.models.institution import Institution
-from backend.app.models.user import User, UserRole
-from backend.app.schemas.deposit import DepositCreate, DepositResponse, DepositStatusUpdate
-from backend.app.auth.dependencies import (
+from app.database import get_db
+from app.models.deposit import Deposit, DepositStatus
+from app.models.institution import Institution
+from app.models.user import User, UserRole
+from app.schemas.deposit import DepositCreate, DepositResponse, DepositStatusUpdate
+from app.auth.dependencies import (
     get_current_user,
     require_officer_or_admin,
     require_role
