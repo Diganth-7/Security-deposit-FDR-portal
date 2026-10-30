@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Any
 import jwt
 import bcrypt
-from backend.app.config import settings
+from app.config import settings
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies a plain password against the stored bcrypt hash."""
