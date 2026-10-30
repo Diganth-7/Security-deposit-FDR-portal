@@ -2,7 +2,7 @@ import enum
 from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
-from backend.app.database import Base
+from app.database import Base
 
 class DepositStatus(str, enum.Enum):
     PENDING_VERIFICATION = "PENDING_VERIFICATION"
