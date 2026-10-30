@@ -1,0 +1,7 @@
+{
+  "name": "AICTE Security Deposit and FDR Management Portal",
+  "description": "SIH 2026 (SIH26265) - Centralized portal for managing AICTE institutional security deposits and Fixed Deposit Receipts (FDR) with role-based access for Admins, Institutions, and Verification Officers.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
