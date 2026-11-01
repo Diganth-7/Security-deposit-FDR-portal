@@ -126,3 +126,20 @@ def test_institution_cannot_verify_own_deposit(client, institution_token):
         headers={"Authorization": f"Bearer {institution_token}"}
     )
     assert verify_res.status_code == 403
+
+
+
+def test_money_is_returned_as_number_and_rejects_extra_decimals(client, institution_token):
+    """Amounts are exact decimals in storage; API returns JSON numbers; >2 decimals rejected."""
+    headers = {"Authorization": f"Bearer {institution_token}"}
+    base = {
+        "bank_name": "State Bank",
+        "issue_date": str(date.today()),
+        "maturity_date": str(date.today() + timedelta(days=365)),
+    }
+    ok = client.post("/api/deposits", json={**base, "fdr_number": "FDR-MONEY-1", "amount": "1500000.10"}, headers=headers)
+    assert ok.status_code == 201, ok.text
+    assert isinstance(ok.json()["amount"], float)
+    assert ok.json()["amount"] == 1500000.10
+    bad = client.post("/api/deposits", json={**base, "fdr_number": "FDR-MONEY-2", "amount": "10.123"}, headers=headers)
+    assert bad.status_code == 422

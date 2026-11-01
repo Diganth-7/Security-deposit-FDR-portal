@@ -4,9 +4,10 @@ from pydantic import BaseModel, Field, model_validator
 from backend.app.models.deposit import DepositStatus
 from backend.app.schemas.institution import InstitutionResponse
 from backend.app.schemas.user import UserResponse
+from backend.app.schemas.common import Money, MoneyOut
 
 class DepositBase(BaseModel):
-    amount: float = Field(..., gt=0, description="Security deposit value in INR (e.g., 1500000.00)")
+    amount: Money = Field(..., description="Security deposit value in INR, up to 2 decimals (e.g., 1500000.00)")
     fdr_number: str = Field(..., min_length=4, max_length=100, description="Fixed Deposit Receipt Certificate Number")
     bank_name: str = Field(..., min_length=2, max_length=255, description="Issuing Scheduled Commercial Bank")
     branch_name: Optional[str] = Field(None, max_length=255)
@@ -53,7 +54,7 @@ class DepositActionDecision(BaseModel):
 class DepositMaturityItem(BaseModel):
     id: int
     fdr_number: str
-    amount: float
+    amount: MoneyOut
     bank_name: str
     issue_date: date
     maturity_date: date
@@ -67,6 +68,7 @@ class DepositMaturityItem(BaseModel):
     model_config = {"from_attributes": True}
 
 class DepositResponse(DepositBase):
+    amount: MoneyOut
     id: int
     status: DepositStatus
     institution_id: int

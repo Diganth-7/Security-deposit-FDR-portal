@@ -45,6 +45,22 @@ def get_current_user(
 
     return user
 
+def get_optional_user(
+    token: str = Depends(oauth2_scheme),
+    db: Session = Depends(get_db)
+):
+    """Returns the authenticated user, or None when no/invalid token is sent."""
+    if not token:
+        return None
+    payload = decode_access_token(token)
+    if not payload or payload.get("sub") is None:
+        return None
+    try:
+        user = db.query(User).filter(User.id == int(payload["sub"])).first()
+    except (TypeError, ValueError):
+        return None
+    return user if user and user.is_active else None
+
 def require_role(allowed_roles: List[UserRole]) -> Callable:
     """
     Role-based access control dependency factory.

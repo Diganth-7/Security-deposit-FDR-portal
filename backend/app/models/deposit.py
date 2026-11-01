@@ -1,6 +1,6 @@
 import enum
 from datetime import datetime, date
-from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text
+from sqlalchemy import Column, Integer, String, Numeric, Date, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
 from backend.app.utils.clock import utc_now
@@ -27,7 +27,7 @@ class Deposit(Base):
 
     id = Column(Integer, primary_key=True, index=True, autoincrement=True)
     fdr_number = Column(String(100), unique=True, index=True, nullable=False)
-    amount = Column(Float, nullable=False)
+    amount = Column(Numeric(15, 2), nullable=False)
     bank_name = Column(String(255), nullable=False)
     branch_name = Column(String(255), nullable=True)
     ifsc_code = Column(String(50), nullable=True)

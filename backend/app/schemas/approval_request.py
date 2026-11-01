@@ -2,6 +2,7 @@ from datetime import datetime, date
 from typing import Optional, List
 from pydantic import BaseModel, Field
 from backend.app.models.approval_request import RequestType, RequestStatus
+from backend.app.schemas.common import MoneyOut
 
 class RenewalRequestCreate(BaseModel):
     deposit_id: int = Field(..., description="Target FDR ID")
@@ -64,7 +65,7 @@ class ApprovalRequestResponse(BaseModel):
 
     # Contextual metadata for UI & Officer Scrutiny Queue
     fdr_number: Optional[str] = None
-    deposit_amount: Optional[float] = None
+    deposit_amount: Optional[MoneyOut] = None
     institution_name: Optional[str] = None
     requested_by_name: Optional[str] = None
     assigned_officer_name: Optional[str] = None

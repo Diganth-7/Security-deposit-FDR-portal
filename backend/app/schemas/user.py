@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from backend.app.models.user import UserRole
 
 class UserBase(BaseModel):
@@ -9,10 +9,20 @@ class UserBase(BaseModel):
     role: UserRole = UserRole.INSTITUTION
 
 class UserCreate(UserBase):
-    password: str = Field(..., min_length=6, max_length=128)
+    password: str = Field(..., min_length=8, max_length=72)
     institution_id: Optional[int] = None
     # Support automatic linking via aicte_id or institution name during registration
     aicte_id: Optional[str] = None
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        # bcrypt only uses the first 72 bytes, so longer passwords are rejected, not truncated.
+        if len(v.encode("utf-8")) > 72:
+            raise ValueError("Password must be at most 72 bytes")
+        if not any(c.isalpha() for c in v) or not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one letter and one digit")
+        return v
 
 class UserLogin(BaseModel):
     email: EmailStr
