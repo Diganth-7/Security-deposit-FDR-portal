@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
+from backend.app.utils.clock import utc_now
 
 class AuditLog(Base):
     __tablename__ = "audit_logs"
@@ -20,7 +21,7 @@ class AuditLog(Base):
     # Description or structured payload
     details = Column(Text, nullable=True)
     
-    timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    timestamp = Column(DateTime, default=utc_now, nullable=False, index=True)
 
     # Relationships
     actor = relationship("User", foreign_keys=[actor_id])

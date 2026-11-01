@@ -7,6 +7,7 @@ from backend.app.models.notification import Notification
 from backend.app.models.user import User, UserRole
 from backend.app.schemas.notification import NotificationResponse, NotificationUnreadCount
 from backend.app.auth.dependencies import get_current_user
+from backend.app.utils.clock import utc_now
 
 router = APIRouter(prefix="/notifications", tags=["In-App Reminders & Notifications"])
 
@@ -86,7 +87,7 @@ def mark_notification_as_read(
         )
 
     notif.is_read = True
-    notif.read_at = datetime.utcnow()
+    notif.read_at = utc_now()
     db.commit()
     db.refresh(notif)
     return notif

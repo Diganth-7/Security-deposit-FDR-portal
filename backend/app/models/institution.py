@@ -2,6 +2,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
+from backend.app.utils.clock import utc_now
 
 class Institution(Base):
     __tablename__ = "institutions"
@@ -15,7 +16,7 @@ class Institution(Base):
     institute_type = Column(String(100), default="Technical Institute", nullable=False)
     contact_email = Column(String(255), nullable=False)
     contact_phone = Column(String(50), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
 
     # Relationships
     users = relationship("User", back_populates="institution")

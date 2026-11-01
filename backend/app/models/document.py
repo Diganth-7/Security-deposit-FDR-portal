@@ -3,6 +3,7 @@ from datetime import datetime
 from sqlalchemy import Column, Integer, String, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
+from backend.app.utils.clock import utc_now
 
 class DocumentType(str, enum.Enum):
     FDR_CERTIFICATE = "FDR_CERTIFICATE"
@@ -41,7 +42,7 @@ class Document(Base):
     mime_type = Column(String(100), nullable=False)
     
     # Upload Audit
-    upload_timestamp = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    upload_timestamp = Column(DateTime, default=utc_now, nullable=False, index=True)
     uploaded_by_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     
     # Verification Audit

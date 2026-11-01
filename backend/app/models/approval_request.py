@@ -3,6 +3,7 @@ from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, DateTime, Date, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
+from backend.app.utils.clock import utc_now
 
 class RequestType(str, enum.Enum):
     RENEWAL = "RENEWAL"
@@ -51,7 +52,7 @@ class ApprovalRequest(Base):
     assigned_officer_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
     decided_by_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
 
-    submitted_at = Column(DateTime, default=datetime.utcnow, nullable=False, index=True)
+    submitted_at = Column(DateTime, default=utc_now, nullable=False, index=True)
     reviewed_at = Column(DateTime, nullable=True)
     decision_reason = Column(Text, nullable=True)
 

@@ -16,6 +16,7 @@ from backend.app.models.audit_log import AuditLog
 from backend.app.models.notification import Notification
 from backend.app.schemas.document import DocumentResponse, DocumentVerifyRequest, DocumentRejectRequest
 from backend.app.services.storage_service import storage_service
+from backend.app.utils.clock import utc_now
 
 logger = logging.getLogger("aicte_fdr.documents")
 
@@ -100,7 +101,7 @@ async def upload_document(
         document_type=document_type,
         file_size=file_size,
         mime_type=mime_type,
-        upload_timestamp=datetime.utcnow(),
+        upload_timestamp=utc_now(),
         uploaded_by_id=current_user.id,
         verification_status=DocumentVerificationStatus.PENDING
     )
@@ -265,7 +266,7 @@ def verify_document(
 
     doc.verification_status = DocumentVerificationStatus.VERIFIED
     doc.verified_by_id = current_user.id
-    doc.verification_timestamp = datetime.utcnow()
+    doc.verification_timestamp = utc_now()
     doc.rejection_reason = None
 
     remarks_text = f" Remarks: {payload.remarks}" if payload.remarks else ""
@@ -290,7 +291,7 @@ def verify_document(
             reminder_type="DOCUMENT_VERIFIED",
             title="Document Verified",
             message=f"Your uploaded document '{doc.original_filename}' has been reviewed and verified by AICTE.",
-            created_at=datetime.utcnow()
+            created_at=utc_now()
         ))
 
     db.commit()
@@ -322,7 +323,7 @@ def reject_document(
 
     doc.verification_status = DocumentVerificationStatus.REJECTED
     doc.verified_by_id = current_user.id
-    doc.verification_timestamp = datetime.utcnow()
+    doc.verification_timestamp = utc_now()
     doc.rejection_reason = payload.rejection_reason.strip()
 
     audit = AuditLog(
@@ -346,7 +347,7 @@ def reject_document(
             reminder_type="DOCUMENT_REJECTED",
             title="Document Rejected - Action Required",
             message=f"Uploaded document '{doc.original_filename}' was rejected. Reason: {doc.rejection_reason}. Please upload a rectified document.",
-            created_at=datetime.utcnow()
+            created_at=utc_now()
         ))
 
     db.commit()

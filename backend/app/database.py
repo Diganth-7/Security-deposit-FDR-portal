@@ -5,48 +5,53 @@ from backend.app.config import settings
 
 logger = logging.getLogger("aicte_fdr.database")
 
+
+def _make_engine(db_url: str):
+    if db_url.startswith("sqlite"):
+        return create_engine(db_url, connect_args={"check_same_thread": False})
+    connect_args = {"connect_timeout": 5} if db_url.startswith("postgresql") else {}
+    return create_engine(db_url, pool_pre_ping=True, pool_size=10, max_overflow=20, connect_args=connect_args)
+
+
 def get_engine():
     """
-    Creates SQLAlchemy Engine with PostgreSQL configuration.
-    Falls back gracefully to SQLite if PostgreSQL server is unreachable in local dev/demo.
+    Builds the engine for DATABASE_URL.
+
+    A SQLite URL is used as-is. For any other database the connection is verified
+    at startup and a failure is raised with a clear message. The app only falls
+    back to SQLite when ALLOW_SQLITE_FALLBACK=true is set explicitly (development
+    convenience), and it says so loudly and reports it on /api/health.
     """
     db_url = settings.DATABASE_URL
+    engine = _make_engine(db_url)
+    if db_url.startswith("sqlite"):
+        return engine, "sqlite"
+
+    safe_url = engine.url.render_as_string(hide_password=True)
     try:
-        if db_url.startswith("sqlite"):
-            engine = create_engine(
-                db_url,
-                connect_args={"check_same_thread": False}
+        with engine.connect():
+            pass
+        logger.info("Connected to database %s", safe_url)
+        return engine, "postgresql" if db_url.startswith("postgresql") else engine.dialect.name
+    except Exception as exc:
+        if settings.ALLOW_SQLITE_FALLBACK and settings.APP_ENV != "production":
+            logger.error(
+                "DATABASE UNREACHABLE (%s): %s. ALLOW_SQLITE_FALLBACK is on, so using %s. "
+                "Data written now will NOT be in your configured database.",
+                safe_url, type(exc).__name__, settings.SQLITE_FALLBACK_URL,
             )
-            return engine, "sqlite"
-        else:
-            # Test PostgreSQL connection with short timeout
-            engine = create_engine(
-                db_url,
-                pool_pre_ping=True,
-                pool_size=10,
-                max_overflow=20,
-                connect_args={"connect_timeout": 3} if "postgresql" in db_url else {}
-            )
-            # Verify connectivity
-            with engine.connect() as conn:
-                logger.info("Successfully connected to PostgreSQL database.")
-            return engine, "postgresql"
-    except Exception as e:
-        if settings.USE_SQLITE_FALLBACK_ON_ERROR:
-            logger.warning(
-                f"PostgreSQL connection to {db_url} failed ({e}). "
-                f"Falling back to local SQLite engine: {settings.SQLITE_FALLBACK_URL}"
-            )
-            fallback_engine = create_engine(
-                settings.SQLITE_FALLBACK_URL,
-                connect_args={"check_same_thread": False}
-            )
-            return fallback_engine, "sqlite-fallback"
-        raise e
+            return _make_engine(settings.SQLITE_FALLBACK_URL), "sqlite-fallback"
+        raise RuntimeError(
+            f"Cannot connect to the configured database ({safe_url}): {type(exc).__name__}. "
+            "Start the database and check DATABASE_URL, or use "
+            "DATABASE_URL=sqlite:///./aicte_fdr.db for local development."
+        ) from exc
+
 
 engine, db_backend_type = get_engine()
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
+
 
 def get_db():
     """

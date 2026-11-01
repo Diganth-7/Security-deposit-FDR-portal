@@ -3,6 +3,7 @@ from datetime import datetime, date
 from sqlalchemy import Column, Integer, String, Float, Date, DateTime, Enum, ForeignKey, Text
 from sqlalchemy.orm import relationship
 from backend.app.database import Base
+from backend.app.utils.clock import utc_now
 
 class DepositStatus(str, enum.Enum):
     # Phase 1 statuses
@@ -49,8 +50,8 @@ class Deposit(Base):
     verification_remarks = Column(Text, nullable=True)
     verified_at = Column(DateTime, nullable=True)
     
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=utc_now, nullable=False)
+    updated_at = Column(DateTime, default=utc_now, onupdate=utc_now, nullable=False)
 
     # Relationships
     institution = relationship("Institution", back_populates="deposits")

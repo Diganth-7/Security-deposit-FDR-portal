@@ -14,6 +14,7 @@ from backend.app.models.approval_request import ApprovalRequest, RequestType, Re
 from backend.app.models.audit_log import AuditLog
 from backend.app.models.notification import Notification
 from backend.app.services.audit_service import record_audit_log
+from backend.app.utils.clock import utc_now
 from backend.app.schemas.approval_request import (
     RenewalRequestCreate,
     ReleaseRequestCreate,
@@ -103,7 +104,7 @@ def submit_renewal_request(
 
     # Update FDR status
     deposit.status = DepositStatus.RENEWAL_REQUESTED
-    deposit.updated_at = datetime.utcnow()
+    deposit.updated_at = utc_now()
 
     doc_ids_str = ",".join(map(str, payload.supporting_document_ids)) if payload.supporting_document_ids else None
 
@@ -117,7 +118,7 @@ def submit_renewal_request(
         supporting_document_ids=doc_ids_str,
         requested_tenure_months=payload.requested_tenure_months,
         requested_by_id=current_user.id,
-        submitted_at=datetime.utcnow()
+        submitted_at=utc_now()
     )
     db.add(req)
     db.flush()
@@ -175,7 +176,7 @@ def submit_release_request(
         )
 
     deposit.status = DepositStatus.RELEASE_REQUESTED
-    deposit.updated_at = datetime.utcnow()
+    deposit.updated_at = utc_now()
 
     doc_ids_str = ",".join(map(str, payload.supporting_document_ids)) if payload.supporting_document_ids else None
 
@@ -189,7 +190,7 @@ def submit_release_request(
         compliance_reference=payload.compliance_reference,
         supporting_document_ids=doc_ids_str,
         requested_by_id=current_user.id,
-        submitted_at=datetime.utcnow()
+        submitted_at=utc_now()
     )
     db.add(req)
     db.flush()
@@ -244,7 +245,7 @@ def submit_forfeiture_request(
         )
 
     deposit.status = DepositStatus.FORFEITURE_REQUESTED
-    deposit.updated_at = datetime.utcnow()
+    deposit.updated_at = utc_now()
 
     doc_ids_str = ",".join(map(str, payload.supporting_document_ids)) if payload.supporting_document_ids else None
 
@@ -259,7 +260,7 @@ def submit_forfeiture_request(
         violation_reason=payload.violation_reason,
         supporting_document_ids=doc_ids_str,
         requested_by_id=current_user.id,
-        submitted_at=datetime.utcnow()
+        submitted_at=utc_now()
     )
     db.add(req)
     db.flush()
@@ -394,7 +395,7 @@ def assign_officer(
 
     req.assigned_officer_id = target_officer_id
     req.status = RequestStatus.UNDER_REVIEW
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
 
     record_audit_log(
         db=db,
@@ -453,22 +454,22 @@ def approve_request(
         deposit.status = DepositStatus.ACTIVE
         deposit.maturity_date = new_maturity
         deposit.verified_by_id = current_user.id
-        deposit.verified_at = datetime.utcnow()
+        deposit.verified_at = utc_now()
         req.extended_maturity_date = new_maturity
 
     elif req.request_type == RequestType.RELEASE:
         deposit.status = DepositStatus.RELEASED
         deposit.verified_by_id = current_user.id
-        deposit.verified_at = datetime.utcnow()
+        deposit.verified_at = utc_now()
 
     elif req.request_type == RequestType.FORFEITURE:
         deposit.status = DepositStatus.CLOSED
         deposit.verified_by_id = current_user.id
-        deposit.verified_at = datetime.utcnow()
+        deposit.verified_at = utc_now()
 
     req.status = RequestStatus.APPROVED
     req.decided_by_id = current_user.id
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
     req.decision_reason = payload.decision_remarks or f"Approved by {current_user.full_name}."
 
     record_audit_log(
@@ -533,11 +534,11 @@ def reject_request(
 
     deposit.verified_by_id = current_user.id
     deposit.verification_remarks = f"Request {req.request_type.value} rejected: {payload.rejection_reason}"
-    deposit.updated_at = datetime.utcnow()
+    deposit.updated_at = utc_now()
 
     req.status = RequestStatus.REJECTED
     req.decided_by_id = current_user.id
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
     req.decision_reason = payload.rejection_reason.strip()
 
     record_audit_log(
@@ -600,10 +601,10 @@ def cancel_request(
             deposit.status = DepositStatus.MATURED_ACTION_REQUIRED
         else:
             deposit.status = DepositStatus.ACTIVE
-        deposit.updated_at = datetime.utcnow()
+        deposit.updated_at = utc_now()
 
     req.status = RequestStatus.CANCELLED
-    req.reviewed_at = datetime.utcnow()
+    req.reviewed_at = utc_now()
     req.decision_reason = "Cancelled by submitting institution."
 
     record_audit_log(

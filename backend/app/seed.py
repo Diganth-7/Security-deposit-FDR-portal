@@ -5,6 +5,7 @@ from backend.app.models.user import User, UserRole
 from backend.app.models.institution import Institution
 from backend.app.models.deposit import Deposit, DepositStatus
 from backend.app.auth.security import get_password_hash
+from backend.app.utils.clock import utc_now
 
 def seed_database():
     """Initializes tables and seeds initial test data for Phase 1 demonstration idempotently."""
@@ -123,7 +124,7 @@ def seed_database():
                     submitted_by_id=submitted_by_id,
                     verified_by_id=verified_by_id,
                     verification_remarks=remarks,
-                    verified_at=datetime.utcnow() - timedelta(days=100) if verified_by_id else None
+                    verified_at=utc_now() - timedelta(days=100) if verified_by_id else None
                 )
                 db.add(dep)
                 db.commit()

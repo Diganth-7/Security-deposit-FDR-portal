@@ -19,6 +19,7 @@ from backend.app.auth.dependencies import (
     require_role,
 )
 from backend.app.services.audit_service import record_audit_log
+from backend.app.utils.clock import utc_now
 
 router = APIRouter(prefix="/contracts", tags=["Contracts & Statutory Agreements"])
 
@@ -266,7 +267,7 @@ def update_contract(
     if update_in.status is not None:
         contract.status = update_in.status
 
-    contract.updated_at = datetime.utcnow()
+    contract.updated_at = utc_now()
     db.commit()
     db.refresh(contract)
 

@@ -1,3 +1,11 @@
+import os
+
+# Must be set before the app is imported so settings pick up the test profile.
+os.environ["APP_ENV"] = "test"
+os.environ["APP_TIMEZONE"] = ""
+if not os.environ.get("DATABASE_URL"):
+    os.environ["DATABASE_URL"] = "sqlite:///./test_bootstrap.db"
+
 import pytest
 from datetime import date, timedelta
 from fastapi.testclient import TestClient

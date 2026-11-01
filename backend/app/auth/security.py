@@ -3,6 +3,7 @@ from typing import Optional, Any
 import jwt
 import bcrypt
 from backend.app.config import settings
+from backend.app.utils.clock import utc_now
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """Verifies a plain password against the stored bcrypt hash."""
@@ -22,11 +23,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     """Creates a signed JWT access token containing claims."""
     to_encode = data.copy()
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = utc_now() + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = utc_now() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    to_encode.update({"exp": expire, "iat": utc_now()})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
     return encoded_jwt
 

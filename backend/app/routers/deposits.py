@@ -25,6 +25,7 @@ from backend.app.auth.dependencies import (
     require_role,
 )
 from backend.app.services.audit_service import record_audit_log
+from backend.app.utils.clock import utc_now
 
 router = APIRouter(prefix="/deposits", tags=["Deposits & FDRs"])
 
@@ -297,7 +298,7 @@ def update_deposit_status(
     old_status = deposit.status
     deposit.status = status_update.status
     deposit.verified_by_id = current_user.id
-    deposit.verified_at = datetime.utcnow()
+    deposit.verified_at = utc_now()
     if status_update.verification_remarks is not None:
         deposit.verification_remarks = status_update.verification_remarks.strip()
 
@@ -580,7 +581,7 @@ def decide_action_request(
         details = f"Rejected {current_req_status.value}. FDR reverted to MATURED_ACTION_REQUIRED. Reason: {decision_in.decision_remarks or 'Rejected'}"
 
     deposit.verified_by_id = current_user.id
-    deposit.verified_at = datetime.utcnow()
+    deposit.verified_at = utc_now()
     if decision_in.decision_remarks:
         deposit.verification_remarks = decision_in.decision_remarks.strip()
 
