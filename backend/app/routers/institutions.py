@@ -1,11 +1,11 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from app.database import get_db
-from app.models.institution import Institution
-from app.models.user import User, UserRole
-from app.schemas.institution import InstitutionCreate, InstitutionResponse
-from app.auth.dependencies import get_current_user, require_admin
+from backend.app.database import get_db
+from backend.app.models.institution import Institution
+from backend.app.models.user import User, UserRole
+from backend.app.schemas.institution import InstitutionCreate, InstitutionResponse
+from backend.app.auth.dependencies import get_current_user, require_admin
 
 router = APIRouter(prefix="/institutions", tags=["Institutions"])
 

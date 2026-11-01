@@ -2,11 +2,11 @@ from datetime import date, timedelta
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import func
-from app.database import get_db
-from app.models.deposit import Deposit, DepositStatus
-from app.models.institution import Institution
-from app.models.user import User, UserRole
-from app.auth.dependencies import get_current_user
+from backend.app.database import get_db
+from backend.app.models.deposit import Deposit, DepositStatus
+from backend.app.models.institution import Institution
+from backend.app.models.user import User, UserRole
+from backend.app.auth.dependencies import get_current_user
 
 router = APIRouter(prefix="/stats", tags=["Dashboard Statistics"])
 

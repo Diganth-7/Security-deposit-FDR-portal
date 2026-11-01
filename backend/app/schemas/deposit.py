@@ -1,9 +1,9 @@
 from datetime import date, datetime
 from typing import Optional, List
 from pydantic import BaseModel, Field, model_validator
-from app.models.deposit import DepositStatus
-from app.schemas.institution import InstitutionResponse
-from app.schemas.user import UserResponse
+from backend.app.models.deposit import DepositStatus
+from backend.app.schemas.institution import InstitutionResponse
+from backend.app.schemas.user import UserResponse
 
 class DepositBase(BaseModel):
     amount: float = Field(..., gt=0, description="Security deposit value in INR (e.g., 1500000.00)")

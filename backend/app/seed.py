@@ -1,10 +1,10 @@
 from datetime import date, timedelta, datetime
 from sqlalchemy.orm import Session
-from app.database import engine, Base, SessionLocal
-from app.models.user import User, UserRole
-from app.models.institution import Institution
-from app.models.deposit import Deposit, DepositStatus
-from app.auth.security import get_password_hash
+from backend.app.database import engine, Base, SessionLocal
+from backend.app.models.user import User, UserRole
+from backend.app.models.institution import Institution
+from backend.app.models.deposit import Deposit, DepositStatus
+from backend.app.auth.security import get_password_hash
 
 def seed_database():
     """Initializes tables and seeds initial test data for Phase 1 demonstration idempotently."""
