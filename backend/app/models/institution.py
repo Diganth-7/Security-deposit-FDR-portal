@@ -20,3 +20,5 @@ class Institution(Base):
     # Relationships
     users = relationship("User", back_populates="institution")
     deposits = relationship("Deposit", back_populates="institution", cascade="all, delete-orphan")
+    contracts = relationship("Contract", back_populates="institution", cascade="all, delete-orphan")
+

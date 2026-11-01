@@ -129,9 +129,51 @@ def officer_token(client, test_officer_user):
     return res.json()["access_token"]
 
 @pytest.fixture()
+def second_institution(db_session):
+    inst = Institution(
+        aicte_id="1-TESTSECOND",
+        name="Second Engineering College",
+        state="Karnataka",
+        city="Bengaluru",
+        address="Whitefield",
+        institute_type="Private",
+        contact_email="second@college.edu",
+        contact_phone="+91-80-12345678"
+    )
+    db_session.add(inst)
+    db_session.commit()
+    db_session.refresh(inst)
+    return inst
+
+@pytest.fixture()
+def second_institution_user(db_session, second_institution):
+    user = User(
+        email="second_registrar@college.edu",
+        full_name="Registrar Second College",
+        hashed_password=get_password_hash("SecondPass123"),
+        role=UserRole.INSTITUTION,
+        institution_id=second_institution.id,
+        is_active=True
+    )
+    db_session.add(user)
+    db_session.commit()
+    db_session.refresh(user)
+    return user
+
+@pytest.fixture()
+def second_institution_token(client, second_institution_user):
+    res = client.post("/api/auth/login", json={
+        "email": "second_registrar@college.edu",
+        "password": "SecondPass123"
+    })
+    return res.json()["access_token"]
+
+@pytest.fixture()
 def institution_token(client, test_institution_user):
     res = client.post("/api/auth/login", json={
         "email": "test_registrar@iiet.ac.in",
         "password": "RegistrarPass123"
     })
     return res.json()["access_token"]
+
+

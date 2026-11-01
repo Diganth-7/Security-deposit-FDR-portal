@@ -182,11 +182,59 @@ def seed_database():
             "CNRB0000542",
             today - timedelta(days=800),
             today - timedelta(days=70),
-            DepositStatus.MATURED,
+            DepositStatus.MATURED_ACTION_REQUIRED,
             inst3.id,
             admin_user.id,
             officer_user.id,
-            "Maturity reached. Renewal notice issued to institution."
+            "Maturity reached. Action required from institution."
+        )
+
+        # FDR maturing in 30 days
+        get_or_create_deposit(
+            "FDR-HDFC-2025-30DAYS",
+            4000000.0,
+            "HDFC Bank",
+            "Kashmere Gate Delhi",
+            "HDFC0000030",
+            today - timedelta(days=335),
+            today + timedelta(days=30),
+            DepositStatus.ACTIVE,
+            inst1.id,
+            inst_user1.id,
+            officer_user.id,
+            "Active AICTE security deposit."
+        )
+
+        # FDR maturing in 7 days
+        get_or_create_deposit(
+            "FDR-AXIS-2025-07DAYS",
+            2500000.0,
+            "Axis Bank",
+            "FC Road Pune",
+            "UTIB0000077",
+            today - timedelta(days=358),
+            today + timedelta(days=7),
+            DepositStatus.ACTIVE,
+            inst2.id,
+            inst_user2.id,
+            officer_user.id,
+            "Approaching maturity. 7 days remaining."
+        )
+
+        # FDR maturing tomorrow (1 day)
+        get_or_create_deposit(
+            "FDR-ICICI-2025-01DAY",
+            3000000.0,
+            "ICICI Bank",
+            "MG Road Bengaluru",
+            "ICIC0000101",
+            today - timedelta(days=364),
+            today + timedelta(days=1),
+            DepositStatus.ACTIVE,
+            inst3.id,
+            admin_user.id,
+            officer_user.id,
+            "Matures tomorrow."
         )
 
         print("Database idempotent seeding completed successfully!")

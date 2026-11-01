@@ -5,12 +5,21 @@ from sqlalchemy.orm import relationship
 from app.database import Base
 
 class DepositStatus(str, enum.Enum):
+    # Phase 1 statuses
     PENDING_VERIFICATION = "PENDING_VERIFICATION"
     VERIFIED = "VERIFIED"
     ACTIVE = "ACTIVE"
     MATURED = "MATURED"
     RELEASED = "RELEASED"
     REJECTED = "REJECTED"
+    
+    # Phase 2 maturity tracking & lifecycle statuses
+    MATURITY_APPROACHING = "MATURITY_APPROACHING"
+    MATURED_ACTION_REQUIRED = "MATURED_ACTION_REQUIRED"
+    RENEWAL_REQUESTED = "RENEWAL_REQUESTED"
+    RELEASE_REQUESTED = "RELEASE_REQUESTED"
+    FORFEITURE_REQUESTED = "FORFEITURE_REQUESTED"
+    CLOSED = "CLOSED"
 
 class Deposit(Base):
     __tablename__ = "deposits"
@@ -24,6 +33,10 @@ class Deposit(Base):
     issue_date = Column(Date, nullable=False)
     maturity_date = Column(Date, nullable=False)
     status = Column(Enum(DepositStatus), default=DepositStatus.PENDING_VERIFICATION, nullable=False, index=True)
+    
+    # Associated contract or statutory approval reference
+    contract_reference = Column(String(100), nullable=True, index=True)
+    contract_id = Column(Integer, ForeignKey("contracts.id", ondelete="SET NULL"), nullable=True, index=True)
     
     # Institution that owns this deposit
     institution_id = Column(Integer, ForeignKey("institutions.id", ondelete="CASCADE"), nullable=False)
@@ -41,5 +54,11 @@ class Deposit(Base):
 
     # Relationships
     institution = relationship("Institution", back_populates="deposits")
+    contract = relationship("Contract", back_populates="deposits")
     submitted_by = relationship("User", foreign_keys=[submitted_by_id], back_populates="submitted_deposits")
     verified_by = relationship("User", foreign_keys=[verified_by_id], back_populates="verified_deposits")
+    notifications = relationship("Notification", back_populates="deposit", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="deposit", cascade="all, delete-orphan")
+    documents = relationship("Document", back_populates="deposit", cascade="all, delete-orphan")
+    approval_requests = relationship("ApprovalRequest", back_populates="deposit", cascade="all, delete-orphan")
+
