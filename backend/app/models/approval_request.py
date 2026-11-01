@@ -47,6 +47,9 @@ class ApprovalRequest(Base):
     statutory_clause = Column(String(255), nullable=True)      # for FORFEITURE
     violation_reason = Column(Text, nullable=True)             # for FORFEITURE
 
+    # FDR status before the request was raised, restored on reject/cancel
+    previous_deposit_status = Column(String(50), nullable=True)
+
     # Actors and Audit Timestamps
     requested_by_id = Column(Integer, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True)
     assigned_officer_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)

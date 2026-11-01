@@ -49,14 +49,47 @@ def second_college_fdr(db_session, second_institution, second_institution_user):
     db_session.refresh(dep)
     return dep
 
+def make_document(db_session, deposit, uploader, verified=False, name="doc"):
+    """Creates a document row for an FDR (verified when asked)."""
+    from backend.app.models.document import Document, DocumentVerificationStatus
+    n = db_session.query(Document).count() + 1
+    doc = Document(
+        deposit_id=deposit.id, institution_id=deposit.institution_id,
+        original_filename=f"{name}.pdf", stored_filename=f"{name}-{n}-{deposit.id}.pdf",
+        file_size=1234, mime_type="application/pdf", uploaded_by_id=uploader.id,
+        verification_status=DocumentVerificationStatus.VERIFIED if verified else DocumentVerificationStatus.PENDING,
+    )
+    db_session.add(doc)
+    db_session.commit()
+    db_session.refresh(doc)
+    return doc
+
+
+def make_contract(db_session, institution, status="TERMINATED", number="CON-WF-1"):
+    from backend.app.models.contract import Contract, ContractStatus
+    today = date.today()
+    c = Contract(
+        contract_number=number, title="Workflow contract", institution_id=institution.id,
+        contract_type="Institutional Affiliation", contract_amount=1000000, required_deposit_amount=500000,
+        start_date=today - timedelta(days=400), end_date=today + timedelta(days=300),
+        status=ContractStatus(status),
+    )
+    db_session.add(c)
+    db_session.commit()
+    db_session.refresh(c)
+    return c
+
+
 # 1. Institution Request Submissions
-def test_institution_submit_renewal_request(client, institution_token, active_fdr, db_session):
+def test_institution_submit_renewal_request(client, institution_token, active_fdr, db_session, test_institution_user):
     """Test institution submitting an FDR renewal extension request."""
+    d1 = make_document(db_session, active_fdr, test_institution_user, name="a")
+    d2 = make_document(db_session, active_fdr, test_institution_user, name="b")
     payload = {
         "deposit_id": active_fdr.id,
         "requested_tenure_months": 36,
         "description": "Requesting 3-year extension for NBA accreditation compliance.",
-        "supporting_document_ids": [1, 2]
+        "supporting_document_ids": [d1.id, d2.id]
     }
     res = client.post(
         "/api/requests/renewal",
@@ -105,8 +138,10 @@ def test_institution_submit_release_request(client, institution_token, active_fd
     db_session.refresh(active_fdr)
     assert active_fdr.status == DepositStatus.RELEASED or active_fdr.status == DepositStatus.RELEASE_REQUESTED
 
-def test_forfeiture_request(client, officer_token, active_fdr, db_session):
+def test_forfeiture_request(client, officer_token, active_fdr, db_session, test_institution):
     """Test statutory forfeiture request initiation."""
+    active_fdr.contract_id = make_contract(db_session, test_institution).id  # forfeiture follows contract terms
+    db_session.commit()
     payload = {
         "deposit_id": active_fdr.id,
         "violation_reason": "Non-compliance with faculty-student ratio norms despite 3 notices.",
@@ -397,3 +432,121 @@ def test_cross_institution_isolation(client, institution_token, second_instituti
         headers={"Authorization": f"Bearer {institution_token}"}
     )
     assert res_cancel.status_code == 403
+
+
+# ---------------- Phase 5 rules ----------------
+def _submit_release(client, token, fdr):
+    return client.post("/api/requests/release", json={"deposit_id": fdr.id, "justification": "Course completed; closure order issued."},
+                       headers={"Authorization": f"Bearer {token}"})
+
+
+def test_supporting_documents_must_belong_to_the_fdr(client, institution_token, active_fdr):
+    res = client.post("/api/requests/renewal", json={"deposit_id": active_fdr.id, "requested_tenure_months": 12,
+                                                     "supporting_document_ids": [987654]},
+                      headers={"Authorization": f"Bearer {institution_token}"})
+    assert res.status_code == 400
+
+
+def test_institution_cannot_submit_forfeiture(client, institution_token, active_fdr):
+    res = client.post("/api/requests/forfeiture", json={
+        "deposit_id": active_fdr.id, "violation_reason": "Alleged breach by someone",
+        "statutory_clause": "Clause 1"}, headers={"Authorization": f"Bearer {institution_token}"})
+    assert res.status_code == 403
+
+
+def test_forfeiture_requires_contract_terms(client, officer_token, active_fdr, db_session, test_institution):
+    body = {"deposit_id": active_fdr.id, "violation_reason": "Breach of norms", "statutory_clause": "Clause 4.8"}
+    h = {"Authorization": f"Bearer {officer_token}"}
+    assert client.post("/api/requests/forfeiture", json=body, headers=h).status_code == 400  # no contract
+    active_fdr.contract_id = make_contract(db_session, test_institution, status="COMPLETED").id
+    db_session.commit()
+    assert client.post("/api/requests/forfeiture", json=body, headers=h).status_code == 400  # fulfilled contract
+
+
+def test_release_blocked_while_contract_active(client, institution_token, active_fdr, db_session, test_institution):
+    active_fdr.contract_id = make_contract(db_session, test_institution, status="ACTIVE").id
+    db_session.commit()
+    assert _submit_release(client, institution_token, active_fdr).status_code == 400
+
+
+def test_maturity_alone_does_not_release(client, officer_token, active_fdr, db_session):
+    """An FDR past maturity stays put until a request is raised and approved."""
+    from backend.app.services.reminder_service import process_maturity_reminders
+    process_maturity_reminders(db_session, as_of_date=date.today() + timedelta(days=60))
+    db_session.refresh(active_fdr)
+    assert active_fdr.status not in (DepositStatus.RELEASED, DepositStatus.CLOSED)
+
+
+def test_release_approval_needs_verified_document(client, officer_token, institution_token, active_fdr, db_session, test_institution_user, test_officer_user):
+    req_id = _submit_release(client, institution_token, active_fdr).json()["id"]
+    h = {"Authorization": f"Bearer {officer_token}"}
+    res = client.patch(f"/api/requests/{req_id}/approve", json={"decision_remarks": "Closure verified"}, headers=h)
+    assert res.status_code == 400 and "VERIFIED document" in res.json()["detail"]
+    make_document(db_session, active_fdr, test_institution_user, verified=False, name="pending")
+    assert client.patch(f"/api/requests/{req_id}/approve", json={"decision_remarks": "Closure verified"}, headers=h).status_code == 400
+    make_document(db_session, active_fdr, test_institution_user, verified=True, name="ok")
+    res = client.patch(f"/api/requests/{req_id}/approve", json={"decision_remarks": "Closure verified"}, headers=h)
+    assert res.status_code == 200, res.text
+    db_session.refresh(active_fdr)
+    assert active_fdr.status == DepositStatus.RELEASED
+
+
+def test_approval_needs_decision_remarks(client, officer_token, institution_token, active_fdr):
+    req_id = client.post("/api/requests/renewal", json={"deposit_id": active_fdr.id, "requested_tenure_months": 12},
+                         headers={"Authorization": f"Bearer {institution_token}"}).json()["id"]
+    res = client.patch(f"/api/requests/{req_id}/approve", json={}, headers={"Authorization": f"Bearer {officer_token}"})
+    assert res.status_code == 422
+
+
+def test_requester_cannot_decide_own_request(client, officer_token, active_fdr, db_session, test_institution):
+    active_fdr.contract_id = make_contract(db_session, test_institution).id
+    db_session.commit()
+    h = {"Authorization": f"Bearer {officer_token}"}
+    req_id = client.post("/api/requests/forfeiture", json={"deposit_id": active_fdr.id, "violation_reason": "Breach of norms",
+                         "statutory_clause": "Clause 4.8"}, headers=h).json()["id"]
+    assert client.patch(f"/api/requests/{req_id}/approve", json={"decision_remarks": "self approval"}, headers=h).status_code == 403
+    assert client.patch(f"/api/requests/{req_id}/reject", json={"rejection_reason": "self reject"}, headers=h).status_code == 403
+
+
+def test_reject_restores_previous_fdr_status_and_audits(client, officer_token, institution_token, active_fdr, db_session):
+    active_fdr.status = DepositStatus.MATURITY_APPROACHING
+    db_session.commit()
+    req_id = client.post("/api/requests/renewal", json={"deposit_id": active_fdr.id, "requested_tenure_months": 12},
+                         headers={"Authorization": f"Bearer {institution_token}"}).json()["id"]
+    res = client.patch(f"/api/requests/{req_id}/reject", json={"rejection_reason": "Bank lien letter missing"},
+                       headers={"Authorization": f"Bearer {officer_token}"})
+    assert res.status_code == 200
+    db_session.refresh(active_fdr)
+    assert active_fdr.status == DepositStatus.MATURITY_APPROACHING
+    actions = {a.action for a in db_session.query(AuditLog).filter(AuditLog.deposit_id == active_fdr.id)}
+    assert {"REQUEST_SUBMITTED_RENEWAL", "REQUEST_REJECTED_RENEWAL", "FDR_STATUS_CHANGED"} <= actions
+
+
+def test_assignment_records_review_started_audit(client, officer_token, institution_token, active_fdr, db_session):
+    req_id = client.post("/api/requests/renewal", json={"deposit_id": active_fdr.id, "requested_tenure_months": 12},
+                         headers={"Authorization": f"Bearer {institution_token}"}).json()["id"]
+    assert client.patch(f"/api/requests/{req_id}/assign", json={}, headers={"Authorization": f"Bearer {officer_token}"}).status_code == 200
+    actions = {a.action for a in db_session.query(AuditLog).filter(AuditLog.entity_type == "APPROVAL_REQUEST", AuditLog.entity_id == req_id)}
+    assert {"REQUEST_ASSIGNED", "REQUEST_REVIEW_STARTED"} <= actions
+
+
+def test_renewal_extends_from_current_maturity_by_months(client, officer_token, institution_token, active_fdr, db_session):
+    from backend.app.utils.clock import add_months
+    old = active_fdr.maturity_date
+    req_id = client.post("/api/requests/renewal", json={"deposit_id": active_fdr.id, "requested_tenure_months": 12},
+                         headers={"Authorization": f"Bearer {institution_token}"}).json()["id"]
+    res = client.patch(f"/api/requests/{req_id}/approve", json={"decision_remarks": "Lien confirmed"},
+                       headers={"Authorization": f"Bearer {officer_token}"})
+    assert res.status_code == 200
+    db_session.refresh(active_fdr)
+    assert active_fdr.maturity_date == add_months(old, 12)
+
+
+def test_configurable_decide_roles(client, officer_token, admin_token, institution_token, active_fdr, monkeypatch):
+    from backend.app.config import settings
+    monkeypatch.setattr(settings, "APPROVAL_DECIDE_ROLES_RENEWAL", "ADMIN")
+    req_id = client.post("/api/requests/renewal", json={"deposit_id": active_fdr.id, "requested_tenure_months": 12},
+                         headers={"Authorization": f"Bearer {institution_token}"}).json()["id"]
+    body = {"decision_remarks": "Approved by admin only"}
+    assert client.patch(f"/api/requests/{req_id}/approve", json=body, headers={"Authorization": f"Bearer {officer_token}"}).status_code == 403
+    assert client.patch(f"/api/requests/{req_id}/approve", json=body, headers={"Authorization": f"Bearer {admin_token}"}).status_code == 200

@@ -127,11 +127,17 @@ def m0005_user_lockout(conn: Connection) -> None:
     _add_column(conn, "users", "last_login_at", "TIMESTAMP")
 
 
+def m0006_request_previous_status(conn: Connection) -> None:
+    """Approval requests remember the FDR status they replaced, so reject/cancel restores it exactly."""
+    _add_column(conn, "approval_requests", "previous_deposit_status", "VARCHAR(50)")
+
+
 MIGRATIONS: List[Tuple[str, Callable[[Connection], None]]] = [
     ("0002_audit_columns", m0002_audit_columns),
     ("0003_audit_deposit_nullable", m0003_audit_deposit_nullable),
     ("0004_money_numeric", m0004_money_numeric),
     ("0005_user_lockout", m0005_user_lockout),
+    ("0006_request_previous_status", m0006_request_previous_status),
 ]
 
 

@@ -59,7 +59,7 @@ class Deposit(Base):
     submitted_by = relationship("User", foreign_keys=[submitted_by_id], back_populates="submitted_deposits")
     verified_by = relationship("User", foreign_keys=[verified_by_id], back_populates="verified_deposits")
     notifications = relationship("Notification", back_populates="deposit", cascade="all, delete-orphan")
-    audit_logs = relationship("AuditLog", back_populates="deposit", cascade="all, delete-orphan")
+    audit_logs = relationship("AuditLog", back_populates="deposit", cascade="save-update, merge", passive_deletes=True)
     documents = relationship("Document", back_populates="deposit", cascade="all, delete-orphan")
     approval_requests = relationship("ApprovalRequest", back_populates="deposit", cascade="all, delete-orphan")
 
