@@ -19,37 +19,10 @@ from backend.app.auth.dependencies import (
     require_role,
 )
 from backend.app.services.audit_service import record_audit_log
+from backend.app.services.contract_service import compute_contract_metrics
 from backend.app.utils.clock import utc_now
 
 router = APIRouter(prefix="/contracts", tags=["Contracts & Statutory Agreements"])
-
-def compute_contract_metrics(contract: Contract) -> dict:
-    """
-    Computes total security deposits, sufficiency status, and shortfall
-    for a given contract based on valid linked FDRs.
-    """
-    valid_contributing_statuses = [
-        DepositStatus.ACTIVE,
-        DepositStatus.MATURITY_APPROACHING,
-        DepositStatus.VERIFIED,
-        DepositStatus.PENDING_VERIFICATION,
-        DepositStatus.MATURED_ACTION_REQUIRED,
-        DepositStatus.MATURED,
-        DepositStatus.RENEWAL_REQUESTED,
-        DepositStatus.RELEASE_REQUESTED,
-    ]
-    linked_valid = [d for d in contract.deposits if d.status in valid_contributing_statuses]
-    total_deposited = sum(float(d.amount) for d in linked_valid)
-    required = float(contract.required_deposit_amount or 0.0)
-    is_sufficient = total_deposited >= required
-    shortfall = max(0.0, required - total_deposited)
-    
-    return {
-        "total_deposited_amount": round(total_deposited, 2),
-        "is_deposit_sufficient": is_sufficient,
-        "deposit_shortfall": round(shortfall, 2),
-        "linked_deposits_count": len(linked_valid)
-    }
 
 def format_contract_response(contract: Contract) -> ContractResponse:
     metrics = compute_contract_metrics(contract)
@@ -59,6 +32,26 @@ def format_contract_response(contract: Contract) -> ContractResponse:
     resp.deposit_shortfall = metrics["deposit_shortfall"]
     resp.linked_deposits_count = metrics["linked_deposits_count"]
     return resp
+
+CLOSING_STATUSES = (ContractStatus.COMPLETED, ContractStatus.EXPIRED, ContractStatus.TERMINATED)
+
+
+def _require_authority_for_closing(user: User, new_status) -> None:
+    """Closing a contract unlocks deposit release/forfeiture rules, so institutions may not do it."""
+    if new_status in CLOSING_STATUSES and user.role == UserRole.INSTITUTION:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only an AICTE officer or administrator can mark a contract COMPLETED, EXPIRED or TERMINATED.",
+        )
+
+
+def _contract_snapshot(c: Contract) -> dict:
+    return {
+        "contract_number": c.contract_number, "title": c.title, "contract_type": c.contract_type,
+        "contract_amount": c.contract_amount, "required_deposit_amount": c.required_deposit_amount,
+        "start_date": c.start_date, "end_date": c.end_date, "status": c.status,
+    }
+
 
 @router.post("", response_model=ContractResponse, status_code=status.HTTP_201_CREATED)
 def create_contract(
@@ -102,13 +95,15 @@ def create_contract(
 
     # Check for unique contract reference number
     existing = db.query(Contract).filter(
-        Contract.contract_number == contract_in.contract_number.strip()
+        Contract.contract_number == contract_in.contract_number.strip().upper()
     ).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"A contract with reference number '{contract_in.contract_number}' already exists."
         )
+
+    _require_authority_for_closing(current_user, contract_in.status)
 
     new_contract = Contract(
         contract_number=contract_in.contract_number.strip().upper(),
@@ -124,6 +119,12 @@ def create_contract(
     )
 
     db.add(new_contract)
+    db.flush()
+    record_audit_log(
+        db, action="CONTRACT_CREATED", actor_id=current_user.id, entity_type="CONTRACT", entity_id=new_contract.id,
+        institution_id=target_institution_id, details=f"Contract {new_contract.contract_number} created.",
+        after=_contract_snapshot(new_contract), commit=False,
+    )
     db.commit()
     db.refresh(new_contract)
 
@@ -249,6 +250,15 @@ def update_contract(
             detail="Contract end date must be strictly after the start date."
         )
 
+    if update_in.status is not None and update_in.status != contract.status:
+        _require_authority_for_closing(current_user, update_in.status)
+    if current_user.role == UserRole.INSTITUTION and contract.status in CLOSING_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This contract is closed; only an AICTE officer or administrator can change it.",
+        )
+    before = _contract_snapshot(contract)
+
     # Apply updates
     if update_in.title is not None:
         contract.title = update_in.title.strip()
@@ -268,6 +278,13 @@ def update_contract(
         contract.status = update_in.status
 
     contract.updated_at = utc_now()
+    after = _contract_snapshot(contract)
+    record_audit_log(
+        db, action="CONTRACT_STATUS_CHANGED" if before["status"] != after["status"] else "CONTRACT_UPDATED",
+        actor_id=current_user.id, entity_type="CONTRACT", entity_id=contract.id,
+        institution_id=contract.institution_id, details=f"Contract {contract.contract_number} updated.",
+        before=before, after=after, commit=False,
+    )
     db.commit()
     db.refresh(contract)
 
@@ -405,7 +422,14 @@ def delete_contract(
             detail="Cannot delete contract with linked financial FDR records. Please update contract status to TERMINATED or COMPLETED instead."
         )
 
+    snapshot = _contract_snapshot(contract)
+    institution_id = contract.institution_id
     db.delete(contract)
+    record_audit_log(
+        db, action="CONTRACT_DELETED", actor_id=current_user.id, entity_type="CONTRACT", entity_id=contract_id,
+        institution_id=institution_id, details=f"Contract #{contract_id} deleted (no linked FDRs).",
+        before=snapshot, commit=False,
+    )
     db.commit()
 
     return {"status": "success", "message": f"Contract #{contract_id} successfully deleted."}

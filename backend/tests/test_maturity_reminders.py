@@ -296,14 +296,22 @@ def test_10_renewal_release_forfeiture_validation(client, institution_token, off
     assert release_res.status_code == 200
     assert release_res.json()["status"] == "RELEASE_REQUESTED"
 
-    # Officer approves Release -> CLOSED
+    # Release approval needs supporting information: a VERIFIED document on the FDR.
+    from backend.app.models.document import Document, DocumentVerificationStatus
+    db_session.add(Document(
+        deposit_id=dep.id, institution_id=dep.institution_id, original_filename="closure-order.pdf",
+        stored_filename="closure-order-test-10.pdf", file_size=100, mime_type="application/pdf",
+        uploaded_by_id=test_institution_user.id, verification_status=DocumentVerificationStatus.VERIFIED))
+    db_session.commit()
+
+    # Officer approves Release -> RELEASED (the unified workflow records a released FDR as RELEASED)
     approve_release_res = client.post(
         f"/api/deposits/{dep.id}/action-decision",
         json={"decision": "APPROVE", "decision_remarks": "Discharge certificate issued to bank."},
         headers={"Authorization": f"Bearer {officer_token}"}
     )
     assert approve_release_res.status_code == 200
-    assert approve_release_res.json()["status"] == "CLOSED"
+    assert approve_release_res.json()["status"] == "RELEASED"
 
 def test_11_existing_apis_regression(client, admin_token, institution_token):
     """11. Verify existing authentication and deposit APIs continue to work without regression."""

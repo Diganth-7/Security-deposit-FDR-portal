@@ -7,6 +7,7 @@ from backend.app.models.institution import Institution
 from backend.app.models.user import User, UserRole
 from backend.app.models.notification import Notification
 from backend.app.services.audit_service import record_audit_log
+from backend.app.utils.clock import today as app_today
 
 logger = logging.getLogger("aicte_fdr.reminders")
 
@@ -61,7 +62,7 @@ def process_maturity_reminders(db: Session, as_of_date: Optional[date] = None) -
     Accepts an optional `as_of_date` parameter to allow testing with controlled dates.
     """
     if as_of_date is None:
-        as_of_date = date.today()
+        as_of_date = app_today()
 
     logger.info(f"Processing FDR maturity reminders as of {as_of_date}...")
 

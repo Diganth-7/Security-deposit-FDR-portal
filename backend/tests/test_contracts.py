@@ -328,3 +328,44 @@ def test_prevent_deleting_contract_with_linked_deposits(client, institution_toke
     )
     assert del_res.status_code == 400
     assert "Cannot delete contract with linked financial FDR records" in del_res.json()["detail"]
+
+
+def test_institution_cannot_close_its_own_contract(client, institution_token, test_institution, db_session):
+    """Closing statuses unlock release/forfeiture, so only officers/admins may set them."""
+    from datetime import date, timedelta
+    from backend.app.models.contract import Contract, ContractStatus
+    c = Contract(contract_number="CON-CLOSE-1", title="Own contract", institution_id=test_institution.id,
+                 contract_type="Institutional Affiliation", contract_amount=100000, required_deposit_amount=1000,
+                 start_date=date.today(), end_date=date.today() + timedelta(days=100), status=ContractStatus.ACTIVE)
+    db_session.add(c)
+    db_session.commit()
+    h = {"Authorization": f"Bearer {institution_token}"}
+    assert client.put(f"/api/contracts/{c.id}", json={"status": "COMPLETED"}, headers=h).status_code == 403
+    assert client.put(f"/api/contracts/{c.id}", json={"status": "TERMINATED"}, headers=h).status_code == 403
+
+
+def test_officer_can_close_contract_and_it_is_audited(client, officer_token, test_institution, db_session):
+    from datetime import date, timedelta
+    from backend.app.models.audit_log import AuditLog
+    from backend.app.models.contract import Contract, ContractStatus
+    c = Contract(contract_number="CON-CLOSE-2", title="Closable", institution_id=test_institution.id,
+                 contract_type="Institutional Affiliation", contract_amount=100000, required_deposit_amount=1000,
+                 start_date=date.today(), end_date=date.today() + timedelta(days=100), status=ContractStatus.ACTIVE)
+    db_session.add(c)
+    db_session.commit()
+    r = client.put(f"/api/contracts/{c.id}", json={"status": "COMPLETED"}, headers={"Authorization": f"Bearer {officer_token}"})
+    assert r.status_code == 200, r.text
+    row = db_session.query(AuditLog).filter(AuditLog.entity_type == "CONTRACT", AuditLog.entity_id == c.id,
+                                            AuditLog.action == "CONTRACT_STATUS_CHANGED").one()
+    assert '"ACTIVE"' in row.before_data and '"COMPLETED"' in row.after_data
+    assert row.actor_role == "OFFICER"
+
+
+def test_duplicate_contract_number_is_case_insensitive(client, institution_token, test_institution):
+    h = {"Authorization": f"Bearer {institution_token}"}
+    from datetime import date, timedelta
+    body = {"contract_number": "con-dup-1", "title": "Dup test", "contract_type": "Institutional Affiliation",
+            "contract_amount": 1000, "required_deposit_amount": 100,
+            "start_date": str(date.today()), "end_date": str(date.today() + timedelta(days=30))}
+    assert client.post("/api/contracts", json=body, headers=h).status_code == 201
+    assert client.post("/api/contracts", json={**body, "contract_number": "CON-DUP-1"}, headers=h).status_code == 400

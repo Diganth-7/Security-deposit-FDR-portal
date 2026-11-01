@@ -2,7 +2,7 @@ import os
 import re
 import uuid
 import pathlib
-from typing import Tuple
+from typing import Protocol, Tuple
 from fastapi import UploadFile, HTTPException, status
 from backend.app.config import settings
 
@@ -19,6 +19,19 @@ ALLOWED_EXTENSIONS = {
     ".jpeg": "image/jpeg",
     ".png": "image/png",
 }
+
+class FileStorage(Protocol):
+    """
+    What the rest of the app needs from a file store. StorageService below keeps files on
+    local disk, outside any web-served directory. To move to cloud object storage later,
+    implement these same methods (for example with boto3 or google-cloud-storage) and
+    create that object instead of ``storage_service`` at the bottom of this module.
+    Responses never expose paths: documents are addressed by ID through the API.
+    """
+    async def save_upload(self, upload_file: UploadFile) -> Tuple[str, str, int, str]: ...
+    def get_file_path(self, stored_filename: str) -> pathlib.Path: ...
+    def delete_file(self, stored_filename: str) -> bool: ...
+
 
 class StorageService:
     def __init__(self, base_dir: str = None):
@@ -132,7 +145,8 @@ class StorageService:
         with open(safe_path, "wb") as f:
             f.write(content)
 
-        return stored_filename, original_name, total_size, mime_type
+        # Return the sanitised name: the client-supplied one is never stored or echoed back.
+        return stored_filename, sanitized_original[:200], total_size, mime_type
 
     def get_file_path(self, stored_filename: str) -> pathlib.Path:
         """Retrieves and verifies existence of stored file."""

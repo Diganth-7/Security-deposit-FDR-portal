@@ -7,6 +7,7 @@ from backend.app.models.deposit import Deposit, DepositStatus
 from backend.app.models.institution import Institution
 from backend.app.models.user import User, UserRole
 from backend.app.auth.dependencies import get_current_user
+from backend.app.utils.clock import today
 
 router = APIRouter(prefix="/stats", tags=["Dashboard Statistics"])
 
@@ -21,10 +22,10 @@ def get_dashboard_stats(
     - INSTITUTION: Stats only for their institution.
     - ADMIN & OFFICER: Pan-India aggregate stats.
     """
-    today = date.today()
-    in_30_days = today + timedelta(days=30)
-    in_7_days = today + timedelta(days=7)
-    in_1_day = today + timedelta(days=1)
+    now = today()
+    in_30_days = now + timedelta(days=30)
+    in_7_days = now + timedelta(days=7)
+    in_1_day = now + timedelta(days=1)
 
     base_query = db.query(Deposit)
     if current_user.role == UserRole.INSTITUTION:
@@ -79,19 +80,19 @@ def get_dashboard_stats(
 
     maturing_within_30_days = base_query.filter(
         Deposit.status.in_(active_scope_statuses),
-        Deposit.maturity_date >= today,
+        Deposit.maturity_date >= now,
         Deposit.maturity_date <= in_30_days
     ).count()
 
     maturing_within_7_days = base_query.filter(
         Deposit.status.in_(active_scope_statuses),
-        Deposit.maturity_date >= today,
+        Deposit.maturity_date >= now,
         Deposit.maturity_date <= in_7_days
     ).count()
 
     maturing_within_1_day = base_query.filter(
         Deposit.status.in_(active_scope_statuses),
-        Deposit.maturity_date >= today,
+        Deposit.maturity_date >= now,
         Deposit.maturity_date <= in_1_day
     ).count()
 
@@ -111,7 +112,8 @@ def get_dashboard_stats(
         Deposit.status == DepositStatus.FORFEITURE_REQUESTED
     ).count()
 
-    institutions_count = db.query(Institution).count()
+    # Institution users only learn about their own institution, not the platform-wide count.
+    institutions_count = 1 if current_user.role == UserRole.INSTITUTION else db.query(Institution).count()
 
     return {
         "total_count": total_count,

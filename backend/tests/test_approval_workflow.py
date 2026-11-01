@@ -550,3 +550,21 @@ def test_configurable_decide_roles(client, officer_token, admin_token, instituti
     body = {"decision_remarks": "Approved by admin only"}
     assert client.patch(f"/api/requests/{req_id}/approve", json=body, headers={"Authorization": f"Bearer {officer_token}"}).status_code == 403
     assert client.patch(f"/api/requests/{req_id}/approve", json=body, headers={"Authorization": f"Bearer {admin_token}"}).status_code == 200
+
+
+def test_legacy_deposit_endpoints_cannot_bypass_workflow_rules(client, officer_token, institution_token, active_fdr, db_session):
+    """The older /deposits/{id}/* request endpoints now run through the same rules and request records."""
+    ho = {"Authorization": f"Bearer {officer_token}"}
+    hi = {"Authorization": f"Bearer {institution_token}"}
+    # Forfeiture without contract terms is refused on the legacy path too.
+    r = client.post(f"/api/deposits/{active_fdr.id}/forfeiture-request",
+                    json={"violation_reason": "Breach of norms", "statutory_clause": "Clause 4.8"}, headers=ho)
+    assert r.status_code == 400
+    # A legacy submission creates a real request that the officer queue can see.
+    assert client.post(f"/api/deposits/{active_fdr.id}/renewal-request",
+                       json={"requested_tenure_months": 12}, headers=hi).status_code == 200
+    pending = client.get("/api/requests/pending", headers=ho).json()
+    assert any(p["deposit_id"] == active_fdr.id and p["request_type"] == "RENEWAL" for p in pending)
+    # No remarks -> rejected by the same rule as the new endpoint.
+    r = client.post(f"/api/deposits/{active_fdr.id}/action-decision", json={"decision": "APPROVE"}, headers=ho)
+    assert r.status_code == 422

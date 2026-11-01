@@ -24,6 +24,8 @@ from backend.app.auth.dependencies import (
     require_officer_or_admin,
     require_role,
 )
+from backend.app.routers import approval_requests as wf
+from backend.app.utils.clock import today as app_today
 from backend.app.services.audit_service import record_audit_log
 from backend.app.utils.clock import utc_now
 
@@ -82,7 +84,7 @@ def get_upcoming_maturities(
     Lists FDRs approaching maturity within the specified number of days.
     Respects role-based institution access.
     """
-    today = date.today()
+    today = app_today()
     cutoff_date = today + timedelta(days=days)
 
     query = db.query(Deposit).options(joinedload(Deposit.institution)).filter(
@@ -131,7 +133,7 @@ def get_matured_deposits(
     Lists FDRs that have already reached their maturity date or are in action-required / request states.
     Respects role-based institution access.
     """
-    today = date.today()
+    today = app_today()
     matured_statuses = [
         DepositStatus.MATURED_ACTION_REQUIRED,
         DepositStatus.MATURED,
@@ -323,306 +325,100 @@ def update_deposit_status(
 # Phase 2 Workflow Endpoints: Renewal, Release, Forfeiture, Decisions
 # =========================================================================
 
-@router.post("/{deposit_id}/renewal-request", response_model=DepositResponse)
+# --------------------------------------------------------------------------- #
+# Phase 2 request endpoints, kept for compatibility.
+#
+# They no longer implement their own rules: each one calls the unified approval
+# workflow in routers/approval_requests.py, so an FDR can only ever change state
+# through one set of rules, one request record and one audit trail. New clients
+# should use /api/requests/*.
+# --------------------------------------------------------------------------- #
+def _deposit_out(db: Session, deposit_id: int):
+    db.expire_all()
+    return db.query(Deposit).options(
+        joinedload(Deposit.institution),
+        joinedload(Deposit.submitted_by),
+        joinedload(Deposit.verified_by)
+    ).filter(Deposit.id == deposit_id).first()
+
+
+@router.post("/{deposit_id}/renewal-request", response_model=DepositResponse, deprecated=True,
+             summary="Deprecated: use POST /api/requests/renewal")
 def request_fdr_renewal(
     deposit_id: int,
     renewal_in: DepositRenewalRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Requests statutory renewal for an FDR approaching maturity or matured.
-    - Can only be initiated by the FDR's Institution or Admin.
-    - Deposit must be ACTIVE, MATURITY_APPROACHING, or MATURED_ACTION_REQUIRED.
-    """
-    deposit = db.query(Deposit).filter(Deposit.id == deposit_id).first()
-    if not deposit:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FDR deposit not found.")
+    wf.submit_renewal_request(
+        wf.RenewalRequestCreate(deposit_id=deposit_id, requested_tenure_months=renewal_in.requested_tenure_months,
+                                description=renewal_in.remarks),
+        db=db, current_user=current_user)
+    return _deposit_out(db, deposit_id)
 
-    if current_user.role == UserRole.INSTITUTION and deposit.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to deposits of other institutions.")
 
-    if current_user.role == UserRole.OFFICER:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Officers cannot initiate renewal requests on behalf of institutions.")
-
-    allowed_statuses = [
-        DepositStatus.ACTIVE,
-        DepositStatus.MATURITY_APPROACHING,
-        DepositStatus.MATURED_ACTION_REQUIRED,
-        DepositStatus.MATURED
-    ]
-    if deposit.status not in allowed_statuses:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Renewal cannot be requested for an FDR in '{deposit.status.value}' status."
-        )
-
-    prev_status = deposit.status
-    deposit.status = DepositStatus.RENEWAL_REQUESTED
-    db.commit()
-    db.refresh(deposit)
-
-    # Record Audit Log
-    record_audit_log(
-        db=db,
-        deposit_id=deposit.id,
-        action="RENEWAL_REQUESTED",
-        actor_id=current_user.id,
-        details=f"Renewal requested for {renewal_in.requested_tenure_months} months. Notes: {renewal_in.remarks or 'None'}"
-    )
-
-    # Create notification for Officers and Admins
-    officers = db.query(User).filter(User.role.in_([UserRole.OFFICER, UserRole.ADMIN]), User.is_active == True).all()
-    for off in officers:
-        db.add(Notification(
-            recipient_user_id=off.id,
-            recipient_role=off.role,
-            institution_id=deposit.institution_id,
-            deposit_id=deposit.id,
-            reminder_type="RENEWAL_REQUESTED",
-            title=f"Renewal Request: FDR {deposit.fdr_number}",
-            message=f"Institution has requested {renewal_in.requested_tenure_months}-month renewal for FDR {deposit.fdr_number}. Scrutiny required.",
-            days_remaining=(deposit.maturity_date - date.today()).days,
-            is_read=False
-        ))
-    db.commit()
-
-    return db.query(Deposit).options(
-        joinedload(Deposit.institution),
-        joinedload(Deposit.submitted_by),
-        joinedload(Deposit.verified_by)
-    ).filter(Deposit.id == deposit.id).first()
-
-@router.post("/{deposit_id}/release-request", response_model=DepositResponse)
+@router.post("/{deposit_id}/release-request", response_model=DepositResponse, deprecated=True,
+             summary="Deprecated: use POST /api/requests/release")
 def request_fdr_release(
     deposit_id: int,
     release_in: DepositReleaseRequest,
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    """
-    Requests release and return of statutory security deposit.
-    - Can only be initiated by the FDR's Institution or Admin.
-    - Deposit must be ACTIVE, MATURITY_APPROACHING, or MATURED_ACTION_REQUIRED.
-    """
-    deposit = db.query(Deposit).filter(Deposit.id == deposit_id).first()
-    if not deposit:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FDR deposit not found.")
+    wf.submit_release_request(
+        wf.ReleaseRequestCreate(deposit_id=deposit_id, justification=release_in.justification,
+                                compliance_reference=release_in.compliance_reference),
+        db=db, current_user=current_user)
+    return _deposit_out(db, deposit_id)
 
-    if current_user.role == UserRole.INSTITUTION and deposit.institution_id != current_user.institution_id:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Access denied to deposits of other institutions.")
 
-    if current_user.role == UserRole.OFFICER:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Officers cannot initiate release requests on behalf of institutions.")
-
-    allowed_statuses = [
-        DepositStatus.ACTIVE,
-        DepositStatus.MATURITY_APPROACHING,
-        DepositStatus.MATURED_ACTION_REQUIRED,
-        DepositStatus.MATURED
-    ]
-    if deposit.status not in allowed_statuses:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Release cannot be requested for an FDR in '{deposit.status.value}' status."
-        )
-
-    deposit.status = DepositStatus.RELEASE_REQUESTED
-    db.commit()
-    db.refresh(deposit)
-
-    # Record Audit Log
-    record_audit_log(
-        db=db,
-        deposit_id=deposit.id,
-        action="RELEASE_REQUESTED",
-        actor_id=current_user.id,
-        details=f"Release requested. Justification: {release_in.justification}. Order ref: {release_in.compliance_reference or 'None'}"
-    )
-
-    # Create notification for Officers and Admins
-    officers = db.query(User).filter(User.role.in_([UserRole.OFFICER, UserRole.ADMIN]), User.is_active == True).all()
-    for off in officers:
-        db.add(Notification(
-            recipient_user_id=off.id,
-            recipient_role=off.role,
-            institution_id=deposit.institution_id,
-            deposit_id=deposit.id,
-            reminder_type="RELEASE_REQUESTED",
-            title=f"Release Request: FDR {deposit.fdr_number}",
-            message=f"Institution has requested statutory release for FDR {deposit.fdr_number}. Justification: {release_in.justification}",
-            days_remaining=(deposit.maturity_date - date.today()).days,
-            is_read=False
-        ))
-    db.commit()
-
-    return db.query(Deposit).options(
-        joinedload(Deposit.institution),
-        joinedload(Deposit.submitted_by),
-        joinedload(Deposit.verified_by)
-    ).filter(Deposit.id == deposit.id).first()
-
-@router.post("/{deposit_id}/forfeiture-request", response_model=DepositResponse)
+@router.post("/{deposit_id}/forfeiture-request", response_model=DepositResponse, deprecated=True,
+             summary="Deprecated: use POST /api/requests/forfeiture")
 def request_fdr_forfeiture(
     deposit_id: int,
     forfeiture_in: DepositForfeitureRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(require_officer_or_admin)
+    current_user: User = Depends(get_current_user)
 ):
-    """
-    Initiates statutory forfeiture proceedings for an FDR due to regulatory non-compliance.
-    - Restricted to OFFICER and ADMIN roles.
-    - Institutions CANNOT initiate forfeiture.
-    """
-    deposit = db.query(Deposit).filter(Deposit.id == deposit_id).first()
-    if not deposit:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FDR deposit not found.")
+    wf.submit_forfeiture_request(
+        wf.ForfeitureRequestCreate(deposit_id=deposit_id, violation_reason=forfeiture_in.violation_reason,
+                                   statutory_clause=forfeiture_in.statutory_clause),
+        db=db, current_user=current_user)
+    return _deposit_out(db, deposit_id)
 
-    deposit.status = DepositStatus.FORFEITURE_REQUESTED
-    db.commit()
-    db.refresh(deposit)
 
-    # Record Audit Log
-    record_audit_log(
-        db=db,
-        deposit_id=deposit.id,
-        action="FORFEITURE_REQUESTED",
-        actor_id=current_user.id,
-        details=f"Forfeiture requested under clause '{forfeiture_in.statutory_clause}'. Reason: {forfeiture_in.violation_reason}"
-    )
-
-    # Notify Institution
-    inst_users = db.query(User).filter(
-        User.institution_id == deposit.institution_id,
-        User.role == UserRole.INSTITUTION,
-        User.is_active == True
-    ).all()
-
-    for u in inst_users:
-        db.add(Notification(
-            recipient_user_id=u.id,
-            recipient_role=UserRole.INSTITUTION,
-            institution_id=deposit.institution_id,
-            deposit_id=deposit.id,
-            reminder_type="FORFEITURE_REQUESTED",
-            title=f"Statutory Notice: Forfeiture Proceedings Initiated for FDR {deposit.fdr_number}",
-            message=f"AICTE has initiated forfeiture proceedings under {forfeiture_in.statutory_clause}. Reason: {forfeiture_in.violation_reason}",
-            days_remaining=(deposit.maturity_date - date.today()).days,
-            is_read=False
-        ))
-    db.commit()
-
-    return db.query(Deposit).options(
-        joinedload(Deposit.institution),
-        joinedload(Deposit.submitted_by),
-        joinedload(Deposit.verified_by)
-    ).filter(Deposit.id == deposit.id).first()
-
-@router.post("/{deposit_id}/action-decision", response_model=DepositResponse)
+@router.post("/{deposit_id}/action-decision", response_model=DepositResponse, deprecated=True,
+             summary="Deprecated: use PATCH /api/requests/{id}/approve or /reject")
 def decide_action_request(
     deposit_id: int,
     decision_in: DepositActionDecision,
     db: Session = Depends(get_db),
     current_user: User = Depends(require_officer_or_admin)
 ):
-    """
-    Approves or Rejects a pending FDR request (Renewal, Release, or Forfeiture).
-    - Enforces mandatory rule: Institutions CANNOT approve their own requests.
-    - Restricted to OFFICER and ADMIN roles.
-    - An auditable decision is logged in audit_logs.
-    """
-    deposit = db.query(Deposit).filter(Deposit.id == deposit_id).first()
-    if not deposit:
+    """Approves or rejects the open request on this FDR through the unified workflow."""
+    if not db.query(Deposit.id).filter(Deposit.id == deposit_id).first():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="FDR deposit not found.")
-
-    pending_request_statuses = [
-        DepositStatus.RENEWAL_REQUESTED,
-        DepositStatus.RELEASE_REQUESTED,
-        DepositStatus.FORFEITURE_REQUESTED
-    ]
-    if deposit.status not in pending_request_statuses:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Deposit is not in a pending request status. Current status: {deposit.status.value}"
-        )
-
-    current_req_status = deposit.status
-
+    open_request = db.query(wf.ApprovalRequest).filter(
+        wf.ApprovalRequest.deposit_id == deposit_id,
+        wf.ApprovalRequest.status.in_(wf.OPEN_STATES),
+    ).first()
+    if not open_request:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="This FDR has no open approval request to decide.")
     if decision_in.decision == "APPROVE":
-        if current_req_status == DepositStatus.RENEWAL_REQUESTED:
-            deposit.status = DepositStatus.ACTIVE
-            if decision_in.extended_maturity_date:
-                if decision_in.extended_maturity_date <= date.today():
-                    raise HTTPException(
-                        status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="Extended maturity date must be in the future."
-                    )
-                deposit.maturity_date = decision_in.extended_maturity_date
-            else:
-                # Default 36 months extension
-                deposit.maturity_date = deposit.maturity_date + timedelta(days=365 * 3)
-            action_name = "REQUEST_APPROVED"
-            details = f"Approved FDR renewal to new maturity date {deposit.maturity_date}. Remarks: {decision_in.decision_remarks or 'Approved'}"
-
-        elif current_req_status == DepositStatus.RELEASE_REQUESTED:
-            deposit.status = DepositStatus.CLOSED
-            action_name = "REQUEST_APPROVED"
-            details = f"Approved statutory release of FDR. Deposit closed and lien discharged. Remarks: {decision_in.decision_remarks or 'Approved'}"
-
-        elif current_req_status == DepositStatus.FORFEITURE_REQUESTED:
-            deposit.status = DepositStatus.CLOSED
-            action_name = "REQUEST_APPROVED"
-            details = f"Approved forfeiture of FDR into AICTE statutory fund. Deposit closed. Remarks: {decision_in.decision_remarks or 'Forfeited'}"
-
+        wf.approve_request(
+            open_request.id,
+            wf.ApprovalDecisionRequest(decision_remarks=decision_in.decision_remarks,
+                                       extended_maturity_date=decision_in.extended_maturity_date),
+            db=db, current_user=current_user)
     else:
-        # REJECT
-        deposit.status = DepositStatus.MATURED_ACTION_REQUIRED
-        action_name = "REQUEST_REJECTED"
-        details = f"Rejected {current_req_status.value}. FDR reverted to MATURED_ACTION_REQUIRED. Reason: {decision_in.decision_remarks or 'Rejected'}"
-
-    deposit.verified_by_id = current_user.id
-    deposit.verified_at = utc_now()
-    if decision_in.decision_remarks:
-        deposit.verification_remarks = decision_in.decision_remarks.strip()
-
-    db.commit()
-    db.refresh(deposit)
-
-    # Record Audit Log
-    record_audit_log(
-        db=db,
-        deposit_id=deposit.id,
-        action=action_name,
-        actor_id=current_user.id,
-        details=details
-    )
-
-    # Notify Institution Users of the Decision
-    inst_users = db.query(User).filter(
-        User.institution_id == deposit.institution_id,
-        User.role == UserRole.INSTITUTION,
-        User.is_active == True
-    ).all()
-
-    for u in inst_users:
-        db.add(Notification(
-            recipient_user_id=u.id,
-            recipient_role=UserRole.INSTITUTION,
-            institution_id=deposit.institution_id,
-            deposit_id=deposit.id,
-            reminder_type=f"DECISION_{current_req_status.value}_{decision_in.decision}",
-            title=f"Decision on FDR {deposit.fdr_number}: {decision_in.decision}",
-            message=f"AICTE {current_user.role.value} has decided: {decision_in.decision}. {details}",
-            days_remaining=(deposit.maturity_date - date.today()).days,
-            is_read=False
-        ))
-    db.commit()
-
-    return db.query(Deposit).options(
-        joinedload(Deposit.institution),
-        joinedload(Deposit.submitted_by),
-        joinedload(Deposit.verified_by)
-    ).filter(Deposit.id == deposit.id).first()
+        reason = (decision_in.decision_remarks or "").strip()
+        if len(reason) < 3:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                                detail="A rejection reason is required in decision_remarks.")
+        wf.reject_request(open_request.id, wf.RejectionDecisionRequest(rejection_reason=reason),
+                          db=db, current_user=current_user)
+    return _deposit_out(db, deposit_id)
 
 
 @router.get("/{deposit_id}/documents", response_model=List[DocumentResponse], summary="List documents attached to a deposit")

@@ -12,7 +12,7 @@ from backend.app.models.institution import Institution
 from backend.app.models.deposit import Deposit
 from backend.app.models.contract import Contract
 from backend.app.models.document import Document, DocumentType, DocumentVerificationStatus
-from backend.app.models.audit_log import AuditLog
+from backend.app.services.audit_service import record_audit_log
 from backend.app.models.notification import Notification
 from backend.app.schemas.document import DocumentResponse, DocumentVerifyRequest, DocumentRejectRequest
 from backend.app.services.storage_service import storage_service
@@ -92,32 +92,36 @@ async def upload_document(
     # Save and validate file safely via storage service
     stored_filename, original_filename, file_size, mime_type = await storage_service.save_upload(file)
 
-    doc = Document(
-        deposit_id=deposit.id,
-        institution_id=deposit.institution_id,
-        contract_id=contract_id,
-        original_filename=original_filename,
-        stored_filename=stored_filename,
-        document_type=document_type,
-        file_size=file_size,
-        mime_type=mime_type,
-        upload_timestamp=utc_now(),
-        uploaded_by_id=current_user.id,
-        verification_status=DocumentVerificationStatus.PENDING
-    )
-    db.add(doc)
-    db.flush()
+    try:
+        doc = Document(
+            deposit_id=deposit.id,
+            institution_id=deposit.institution_id,
+            contract_id=contract_id,
+            original_filename=original_filename,
+            stored_filename=stored_filename,
+            document_type=document_type,
+            file_size=file_size,
+            mime_type=mime_type,
+            upload_timestamp=utc_now(),
+            uploaded_by_id=current_user.id,
+            verification_status=DocumentVerificationStatus.PENDING
+        )
+        db.add(doc)
+        db.flush()
 
-    # Record Audit Log
-    audit = AuditLog(
-        actor_id=current_user.id,
-        action="DOCUMENT_UPLOADED",
-        deposit_id=deposit.id,
-        details=f"Uploaded {document_type.value}: '{original_filename}' ({file_size} bytes). Document ID: {doc.id}."
-    )
-    db.add(audit)
-    db.commit()
-    db.refresh(doc)
+        # Record Audit Log
+        record_audit_log(
+            db, deposit_id=deposit.id, action="DOCUMENT_UPLOADED", actor_id=current_user.id,
+            details=f"Uploaded {document_type.value}: '{original_filename}' ({file_size} bytes). Document ID: {doc.id}.",
+            entity_type="DOCUMENT", entity_id=doc.id, institution_id=deposit.institution_id,
+            after={"verification_status": DocumentVerificationStatus.PENDING, "document_type": document_type}, commit=False,
+        )
+        db.commit()
+        db.refresh(doc)
+    except Exception:
+        db.rollback()
+        storage_service.delete_file(stored_filename)  # do not leave an orphaned file behind
+        raise
 
     logger.info(f"User {current_user.email} uploaded document {doc.id} ({original_filename}) for deposit {deposit.fdr_number}")
     return _to_document_response(doc)
@@ -235,6 +239,11 @@ def download_document(
 
     file_path = storage_service.get_file_path(doc.stored_filename)
 
+    record_audit_log(
+        db, deposit_id=doc.deposit_id, action="DOCUMENT_DOWNLOADED", actor_id=current_user.id,
+        details=f"Document '{doc.original_filename}' (ID: {doc.id}) downloaded.",
+        entity_type="DOCUMENT", entity_id=doc.id, institution_id=doc.institution_id,
+    )
     return FileResponse(
         path=str(file_path),
         media_type=doc.mime_type,
@@ -264,19 +273,20 @@ def verify_document(
             detail=f"Document with ID {document_id} not found."
         )
 
+    prior_status = doc.verification_status
     doc.verification_status = DocumentVerificationStatus.VERIFIED
     doc.verified_by_id = current_user.id
     doc.verification_timestamp = utc_now()
     doc.rejection_reason = None
 
     remarks_text = f" Remarks: {payload.remarks}" if payload.remarks else ""
-    audit = AuditLog(
-        actor_id=current_user.id,
-        action="DOCUMENT_VERIFIED",
-        deposit_id=doc.deposit_id,
-        details=f"Document '{doc.original_filename}' (ID: {doc.id}) verified by Officer {current_user.full_name}.{remarks_text}"
+    record_audit_log(
+        db, deposit_id=doc.deposit_id, action="DOCUMENT_VERIFIED", actor_id=current_user.id,
+        details=f"Document '{doc.original_filename}' (ID: {doc.id}) verified by Officer {current_user.full_name}.{remarks_text}",
+        entity_type="DOCUMENT", entity_id=doc.id, institution_id=doc.institution_id,
+        before={"verification_status": prior_status}, after={"verification_status": DocumentVerificationStatus.VERIFIED},
+        commit=False,
     )
-    db.add(audit)
 
     # Send Notification to institution users
     inst_users = db.query(User).filter(
@@ -321,18 +331,19 @@ def reject_document(
             detail=f"Document with ID {document_id} not found."
         )
 
+    prior_status = doc.verification_status
     doc.verification_status = DocumentVerificationStatus.REJECTED
     doc.verified_by_id = current_user.id
     doc.verification_timestamp = utc_now()
     doc.rejection_reason = payload.rejection_reason.strip()
 
-    audit = AuditLog(
-        actor_id=current_user.id,
-        action="DOCUMENT_REJECTED",
-        deposit_id=doc.deposit_id,
-        details=f"Document '{doc.original_filename}' (ID: {doc.id}) rejected by Officer {current_user.full_name}. Reason: {doc.rejection_reason}"
+    record_audit_log(
+        db, deposit_id=doc.deposit_id, action="DOCUMENT_REJECTED", actor_id=current_user.id,
+        details=f"Document '{doc.original_filename}' (ID: {doc.id}) rejected by Officer {current_user.full_name}. Reason: {doc.rejection_reason}",
+        entity_type="DOCUMENT", entity_id=doc.id, institution_id=doc.institution_id,
+        before={"verification_status": prior_status}, after={"verification_status": DocumentVerificationStatus.REJECTED},
+        commit=False,
     )
-    db.add(audit)
 
     # Notify institution
     inst_users = db.query(User).filter(

@@ -14,7 +14,7 @@ from backend.app.database import engine, db_backend_type, SessionLocal
 from backend.app.migrations import run_migrations
 from backend.app.routers import (
     auth, institutions, deposits, stats, tests_runner, notifications, reminders,
-    contracts, documents, approval_requests,
+    contracts, documents, approval_requests, audit, reports,
 )
 from backend.app.seed import seed_database
 from backend.app.services.reminder_service import process_maturity_reminders
@@ -152,7 +152,8 @@ async def unhandled_error_handler(request: Request, exc: Exception):
 
 # ---- Routers ----
 for _router in (auth.router, institutions.router, deposits.router, contracts.router, documents.router,
-                approval_requests.router, notifications.router, reminders.router, stats.router):
+                approval_requests.router, notifications.router, reminders.router, stats.router,
+                audit.router, reports.router):
     app.include_router(_router, prefix=settings.API_PREFIX)
 if settings.ENABLE_TEST_RUNNER:
     app.include_router(tests_runner.router, prefix=settings.API_PREFIX)
