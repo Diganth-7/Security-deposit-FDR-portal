@@ -61,6 +61,8 @@ class Settings(BaseSettings):
 
     # --- Demo / diagnostics (None = derive from APP_ENV) --------------------
     SEED_DEMO_DATA: Optional[bool] = None
+    # Shared password for the demo accounts. Leave empty to have a random one generated and logged once.
+    DEMO_PASSWORD: str = ""
     ENABLE_TEST_RUNNER: Optional[bool] = None
 
     # --- Approval workflow permissions (comma separated roles) --------------
