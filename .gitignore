@@ -16,3 +16,7 @@ storage/documents/*
 !storage/documents/.gitkeep
 
 
+
+.venv/
+aicte_demo.db
+test_bootstrap.db

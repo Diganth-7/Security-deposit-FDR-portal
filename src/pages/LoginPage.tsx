@@ -2,6 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { Institution } from '../types';
+
+// Demo quick-login is opt-in and the password comes from the build environment, never from source.
+const DEMO_PASSWORD = (import.meta.env.VITE_DEMO_PASSWORD as string | undefined) ?? '';
+const SHOW_DEMO_LOGINS = import.meta.env.VITE_SHOW_DEMO_LOGINS === 'true' && DEMO_PASSWORD !== '';
+
 import {
   Shield,
   Lock,
@@ -107,6 +112,7 @@ export const LoginPage: React.FC = () => {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-xl px-4">
         <div className="bg-white py-8 px-6 shadow-xl rounded-2xl sm:px-10 border border-slate-200">
           {/* Fast-Track Demo Selector for Hackathon Reviewers */}
+          {SHOW_DEMO_LOGINS && (
           <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200/80 rounded-xl">
             <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 mb-2">
               <Sparkles className="w-4 h-4 text-amber-500" />
@@ -115,7 +121,7 @@ export const LoginPage: React.FC = () => {
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
-                onClick={() => handleQuickLogin('admin@aicte.gov.in', 'Admin@AICTE2026')}
+                onClick={() => handleQuickLogin('admin@aicte.gov.in', DEMO_PASSWORD)}
                 className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-left shadow-2xs font-medium text-slate-800 transition-colors"
               >
                 <span className="font-bold text-rose-700 block text-[11px] uppercase">
@@ -126,7 +132,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('officer.sharma@aicte.gov.in', 'Officer@AICTE2026')}
+                onClick={() => handleQuickLogin('officer.sharma@aicte.gov.in', DEMO_PASSWORD)}
                 className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-left shadow-2xs font-medium text-slate-800 transition-colors"
               >
                 <span className="font-bold text-indigo-700 block text-[11px] uppercase">
@@ -137,7 +143,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('registrar@dtu.ac.in', 'Dtu@2026Pass')}
+                onClick={() => handleQuickLogin('registrar@dtu.ac.in', DEMO_PASSWORD)}
                 className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-left shadow-2xs font-medium text-slate-800 transition-colors"
               >
                 <span className="font-bold text-emerald-700 block text-[11px] uppercase">
@@ -148,7 +154,7 @@ export const LoginPage: React.FC = () => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('finance@coep.ac.in', 'Coep@2026Pass')}
+                onClick={() => handleQuickLogin('finance@coep.ac.in', DEMO_PASSWORD)}
                 className="px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-left shadow-2xs font-medium text-slate-800 transition-colors"
               >
                 <span className="font-bold text-emerald-700 block text-[11px] uppercase">
@@ -158,6 +164,7 @@ export const LoginPage: React.FC = () => {
               </button>
             </div>
           </div>
+          )}
 
           {/* Toggle between Sign In / Register */}
           <div className="flex border-b border-slate-200 mb-6">
@@ -228,9 +235,10 @@ export const LoginPage: React.FC = () => {
                     className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
                     <option value="INSTITUTION">INSTITUTION (College / University Representative)</option>
-                    <option value="OFFICER">OFFICER (AICTE Scrutiny Officer)</option>
-                    <option value="ADMIN">ADMIN (Central AICTE Directorate)</option>
                   </select>
+                  <p className="mt-1 text-[11px] text-slate-500">
+                    Officer and Admin accounts are created by an AICTE administrator. Password: at least 8 characters with a letter and a digit.
+                  </p>
                 </div>
 
                 {role === 'INSTITUTION' && institutions.length > 0 && (

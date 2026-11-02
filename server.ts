@@ -15,7 +15,7 @@ let fastapiProcess: ChildProcess | null = null;
 // Start Python FastAPI daemon
 function startFastApiBackend() {
   console.log('[Server] Spawning Python FastAPI backend on port 8000...');
-  fastapiProcess = spawn('python3', [
+  fastapiProcess = spawn(process.env.PYTHON_BIN || 'python3', [
     '-m', 'uvicorn',
     'backend.app.main:app',
     '--host', '127.0.0.1',
@@ -55,6 +55,8 @@ async function startServer() {
   // Proxy API and OpenAPI / Swagger docs requests to FastAPI on port 8000
   const apiProxy = createProxyMiddleware({
     target: `http://127.0.0.1:${FASTAPI_PORT}`,
+    // Mounted without a path so Express does not strip '/api'; the filter picks what to forward.
+    pathFilter: ['/api', '/docs', '/redoc', '/openapi.json'],
     changeOrigin: true,
     ws: true,
     on: {
@@ -70,10 +72,7 @@ async function startServer() {
     }
   });
 
-  app.use('/api', apiProxy);
-  app.use('/docs', apiProxy);
-  app.use('/redoc', apiProxy);
-  app.use('/openapi.json', apiProxy);
+  app.use(apiProxy);
 
   const isProduction = process.env.NODE_ENV === 'production';
 
@@ -92,10 +91,11 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`[Server] AICTE FDR Management Portal running on http://0.0.0.0:${PORT}`);
-    console.log(`[Server] FastAPI Backend proxied via http://0.0.0.0:${PORT}/api`);
-    console.log(`[Server] Swagger Docs accessible at http://0.0.0.0:${PORT}/docs`);
+  const HOST = process.env.HOST || '127.0.0.1';
+  app.listen(PORT, HOST, () => {
+    console.log(`[Server] AICTE FDR Management Portal running on http://${HOST}:${PORT}`);
+    console.log(`[Server] FastAPI Backend proxied via http://${HOST}:${PORT}/api`);
+    console.log(`[Server] Swagger Docs accessible at http://${HOST}:${PORT}/docs`);
   });
 }
 

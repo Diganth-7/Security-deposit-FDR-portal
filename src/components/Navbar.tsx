@@ -86,15 +86,16 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span>FastAPI {backendHealthy ? 'Connected' : 'Offline'}</span>
             </div>
 
-            {/* Test Suite Runner Button */}
-            <button
-              onClick={onOpenTestRunner}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors shadow-xs"
-              title="Run automated pytest backend tests in real-time"
-            >
-              <Terminal className="w-3.5 h-3.5 text-emerald-400" />
-              <span>Run Tests</span>
-            </button>
+            {user?.role === 'ADMIN' && (
+              <button
+                onClick={onOpenTestRunner}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-900 text-white hover:bg-slate-800 transition-colors shadow-xs"
+                title="Run automated pytest backend tests in real-time"
+              >
+                <Terminal className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Run Tests</span>
+              </button>
+            )}
 
             {/* Architecture / API Specs Button */}
             <button
