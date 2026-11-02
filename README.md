@@ -65,7 +65,7 @@ notifications, audit trail, reports and CSV export. Dedicated screens for these 
 ## Tests
 
 ```bash
-.venv/bin/python -m pytest backend/tests -q      # 104 tests, in-memory database
+.venv/bin/python -m pytest backend/tests -q      # 105 tests, in-memory database
 npm run lint && npm run build                     # frontend type-check and build
 ```
 
