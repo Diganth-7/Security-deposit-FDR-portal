@@ -12,12 +12,22 @@ export SEED_DEMO_DATA=true
 export VITE_SHOW_DEMO_LOGINS=true
 export VITE_DEMO_PASSWORD="$DEMO_PASSWORD"
 export PORT="${PORT:-3000}"
-export PYTHON_BIN="$PWD/.venv/bin/python"
 
-if [ ! -x "$PYTHON_BIN" ]; then
+# Linux/macOS keep the venv python in .venv/bin, Windows (Git Bash) in .venv/Scripts.
+find_venv_python() {
+  if [ -x ".venv/bin/python" ]; then echo ".venv/bin/python"
+  elif [ -x ".venv/Scripts/python.exe" ]; then echo ".venv/Scripts/python.exe"
+  fi
+}
+PY="$(find_venv_python || true)"
+if [ -z "$PY" ]; then
   echo ">> Creating Python virtualenv (.venv)"
-  python3 -m venv .venv
+  if command -v python3 >/dev/null 2>&1; then python3 -m venv .venv; else python -m venv .venv; fi
+  PY="$(find_venv_python)"
 fi
+export PYTHON_BIN="$PWD/$PY"
+# Node (on Windows) needs a native path such as C:\...\python.exe, not /c/...
+if command -v cygpath >/dev/null 2>&1; then export PYTHON_BIN="$(cygpath -w "$PYTHON_BIN")"; fi
 echo ">> Installing backend dependencies"
 "$PYTHON_BIN" -m pip install -q --disable-pip-version-check -r backend/requirements.txt
 echo ">> Installing frontend dependencies"
