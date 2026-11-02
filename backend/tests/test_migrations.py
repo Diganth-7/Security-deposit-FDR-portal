@@ -40,3 +40,11 @@ def test_upgrade_preserves_rows_and_is_idempotent(tmp_path):
         assert {"failed_login_attempts", "locked_until"} <= user_cols
 
     assert run_migrations(eng) == []  # second run changes nothing
+
+
+def test_postgres_urls_use_the_installed_psycopg2_driver():
+    from backend.app.database import _normalize_url
+    assert _normalize_url("postgresql://u:p@localhost/db").startswith("postgresql+psycopg2://")
+    assert _normalize_url("postgres://u:p@localhost/db").startswith("postgresql+psycopg2://")
+    assert _normalize_url("postgresql+psycopg2://u:p@localhost/db").startswith("postgresql+psycopg2://")
+    assert _normalize_url("sqlite:///./x.db") == "sqlite:///./x.db"

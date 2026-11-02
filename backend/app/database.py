@@ -1,12 +1,25 @@
 import logging
 from sqlalchemy import create_engine
+from sqlalchemy.engine import make_url
 from sqlalchemy.orm import declarative_base, sessionmaker
 from backend.app.config import settings
 
 logger = logging.getLogger("aicte_fdr.database")
 
 
+def _normalize_url(db_url: str) -> str:
+    """
+    A bare postgresql:// URL means psycopg2 on older SQLAlchemy but psycopg v3 on 2.1+.
+    requirements.txt installs psycopg2, so always name it explicitly.
+    """
+    url = make_url(db_url)
+    if url.drivername in ("postgres", "postgresql"):
+        url = url.set(drivername="postgresql+psycopg2")
+    return url.render_as_string(hide_password=False)
+
+
 def _make_engine(db_url: str):
+    db_url = _normalize_url(db_url)
     if db_url.startswith("sqlite"):
         return create_engine(db_url, connect_args={"check_same_thread": False})
     connect_args = {"connect_timeout": 5} if db_url.startswith("postgresql") else {}
